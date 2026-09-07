@@ -82,6 +82,22 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 20px; }
 /* ---------- Stats ---------- */
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
 .stat-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+
+/* ---------- Dashboard special sections (Super Deals / Trends) ---------- */
+.special-section { margin-top: 26px; }
+.special-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.special-title { font-size: 16px; font-weight: 800; }
+.special-row { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+.special-card {
+  flex: 0 0 150px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  overflow: hidden; cursor: pointer; transition: border-color 0.15s;
+}
+.special-card:hover { border-color: var(--accent-2); }
+.special-card-img { width: 100%; height: 150px; object-fit: cover; background: #222; display: block; }
+.special-card-body { padding: 8px 10px; }
+.special-card-title { font-size: 11.5px; line-height: 1.3; margin-bottom: 6px; min-height: 28px; overflow: hidden; }
+.special-card-price { color: var(--accent); font-weight: 800; font-size: 13px; }
+.special-card-compare { color: var(--text-dim); font-size: 10.5px; text-decoration: line-through; margin-left: 6px; }
 .stat-value { font-size: 26px; font-weight: 800; margin-bottom: 4px; }
 .stat-label { font-size: 12px; color: var(--text-dim); }
 
@@ -129,6 +145,31 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 20px; }
 .finder-card-meta { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
 .finder-card-price { color: var(--accent); font-weight: 700; }
 .finder-card-status { position: absolute; top: 8px; right: 8px; }
+
+/* ---------- Browse Shein ---------- */
+.browse-layout { display: flex; gap: 18px; align-items: flex-start; }
+.browse-menu {
+  width: 220px; flex-shrink: 0; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 10px; max-height: 640px; overflow-y: auto;
+}
+.browse-menu-item {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 12.5px;
+  cursor: pointer; margin-bottom: 1px;
+}
+.browse-menu-item:hover { background: var(--panel-2); }
+.browse-menu-item.active { background: rgba(196,77,255,0.15); color: var(--accent-2); font-weight: 700; }
+.browse-menu-group-label {
+  font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase;
+  padding: 10px 10px 4px; letter-spacing: 0.04em;
+}
+.browse-submenu { padding-left: 14px; }
+.browse-submenu .browse-menu-item { font-size: 12px; color: var(--text-dim); }
+.browse-content { flex: 1; min-width: 0; }
+.tag-badge { display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 10px; font-weight: 700; }
+.tag-new { background: rgba(46,204,113,0.15); color: var(--success); }
+.tag-trending, .tag-hot { background: rgba(255,77,94,0.15); color: var(--accent); }
+.tag-flash-sale { background: rgba(196,77,255,0.15); color: var(--accent-2); }
 
 /* ---------- Table ---------- */
 .table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
