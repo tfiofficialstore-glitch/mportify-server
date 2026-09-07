@@ -1,7 +1,4 @@
 node_modules/
 .env
-importify.db
-importify.db-journal
-importify.db-wal
-importify.db-shm
+data.json
 server.log
