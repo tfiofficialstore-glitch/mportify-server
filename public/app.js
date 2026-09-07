@@ -42,7 +42,7 @@ function showApp() {
   document.getElementById('app').style.display = 'flex';
   loadStats();
   loadImports();
-  loadFinder();
+  loadFinder(true);
 }
 
 // Auto-login if key already stored and valid
@@ -62,7 +62,8 @@ document.querySelectorAll('.menu-item').forEach(btn => {
     btn.classList.add('active');
     document.getElementById(btn.dataset.page).classList.add('active');
     if (btn.dataset.page === 'statsPage') loadStats();
-    if (btn.dataset.page === 'finderPage') loadFinder();
+    if (btn.dataset.page === 'finderPage') loadFinder(true);
+    if (btn.dataset.page === 'browsePage' && browseMenuData.length === 0) loadBrowseMenu();
   });
 });
 
@@ -93,6 +94,67 @@ async function loadStats() {
     document.getElementById('statToday').textContent = s.today;
     document.getElementById('statWeek').textContent = s.last7Days;
   } catch (e) { /* handled in api() */ }
+
+  loadSpecialSection('superDealsRow', SUPER_DEALS_URL, 'Super Deals');
+  loadSpecialSection('trendsRow', TRENDS_URL, 'Trends');
+}
+
+// ============================================================
+// DASHBOARD SPECIAL SECTIONS — Super Deals & Trends preview rows
+// ============================================================
+const SUPER_DEALS_URL = 'https://www.shein.com/super-deals';
+const TRENDS_URL = 'https://www.shein.com/top-trend';
+
+async function loadSpecialSection(rowId, url, title) {
+  const row = document.getElementById(rowId);
+
+  // Queue a scrape if we don't already have fresh data for this URL
+  // (server skips re-queuing if it was synced recently).
+  try { await api('/api/browse', { method: 'POST', body: JSON.stringify({ url, title }) }); } catch (e) {}
+
+  let attempts = 0;
+  const maxAttempts = 15; // ~45s
+  const poll = async () => {
+    attempts++;
+    try {
+      const res = await api('/api/catalog?' + new URLSearchParams({ collectionUrl: url, status: 'all', limit: 6 }));
+      const json = await res.json();
+      if (json.data && json.data.length > 0) {
+        renderSpecialRow(row, json.data, url, title);
+        return;
+      }
+    } catch (e) { /* keep polling */ }
+
+    if (attempts < maxAttempts) {
+      setTimeout(poll, 3000);
+    } else {
+      row.innerHTML = '<div class="empty-row" style="padding:20px">Abhi data nahi mila. Extension browser mein khula hona chahiye.</div>';
+    }
+  };
+  poll();
+}
+
+function renderSpecialRow(row, items, url, title) {
+  row.innerHTML = items.map(r => `
+    <div class="special-card" onclick="goToBrowseFor('${escAttr(url)}', '${escAttr(title)}')">
+      <img class="special-card-img" src="${escAttr(r.image || '')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.visibility='hidden'" />
+      <div class="special-card-body">
+        <div class="special-card-title">${escHtml(truncate(r.title || 'Untitled', 40))}</div>
+        <div>
+          <span class="special-card-price">${r.price ? '$' + escHtml(r.price) : ''}</span>
+          ${r.compare_price ? `<span class="special-card-compare">$${escHtml(r.compare_price)}</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function goToBrowseFor(url, title) {
+  document.querySelectorAll('.menu-item').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelector('.menu-item[data-page="browsePage"]').classList.add('active');
+  document.getElementById('browsePage').classList.add('active');
+  openBrowseCategory(url, title);
 }
 
 // ---------- List ----------
@@ -118,34 +180,57 @@ async function loadImports() {
   }
 }
 
+function stockBadge(r) {
+  if (r.status !== 'success' || !r.product_url) return '<span class="sku-cell">—</span>';
+  if (r.stock_status === 'sold_out') return '<span class="badge badge-error">⛔ Sold Out' + (r.shopify_status === 'draft' ? ' (Drafted)' : '') + '</span>';
+  if (r.stock_status === 'in_stock') return '<span class="badge badge-success">✅ In Stock</span>';
+  return '<span class="sku-cell">Not checked yet</span>';
+}
+
 function renderTable(rows) {
   const tbody = document.getElementById('tableBody');
   if (!rows || rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-row">No products imported yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No products imported yet.</td></tr>';
     return;
   }
 
   tbody.innerHTML = rows.map(r => `
     <tr>
-      <td><img class="prod-img" src="${escAttr(r.image || '')}" onerror="this.style.visibility='hidden'" /></td>
+      <td><img class="prod-img" src="${escAttr(r.image || '')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.visibility='hidden'" /></td>
       <td class="sku-cell">${escHtml(r.sku || '-')}</td>
       <td>${escHtml(truncate(r.title || 'Untitled', 46))}</td>
       <td><span class="badge badge-shein">${escHtml(r.website || 'Shein')}</span></td>
       <td><span class="badge ${r.status === 'success' ? 'badge-success' : 'badge-error'}">${r.status === 'success' ? 'Success' : 'Failed'}</span></td>
+      <td>${stockBadge(r)}</td>
       <td>${formatDate(r.imported_at)}</td>
       <td>
         <button class="action-btn" title="View" onclick="viewRow('${r.id}')">👁</button>
+        ${r.product_url ? `<button class="action-btn" title="Recheck stock now" onclick="recheckStock('${r.id}', this)">🔄</button>` : ''}
         <button class="action-btn" title="Delete" onclick="deleteRow('${r.id}')">🗑</button>
       </td>
     </tr>
   `).join('');
 }
 
+async function recheckStock(id, btn) {
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = '⏳';
+  try {
+    await api('/api/imports/' + id + '/recheck', { method: 'POST' });
+    alert('Recheck queue mein daal diya — extension agle 1 minute mein isay check karega. Kuch der baad list refresh kar lein.');
+  } catch (e) {
+    alert('Recheck queue nahi ho saka.');
+  }
+  btn.disabled = false;
+  btn.textContent = original;
+}
+
 async function viewRow(id) {
   const res = await api('/api/imports/' + id);
   const r = await res.json();
   document.getElementById('modalBody').innerHTML = `
-    ${r.image ? `<img src="${escAttr(r.image)}" onerror="this.style.display='none'" />` : ''}
+    ${r.image ? `<img src="${escAttr(r.image)}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />` : ''}
     <h2>${escHtml(r.title || 'Untitled')}</h2>
     <div class="modal-row"><span>SKU</span><span>${escHtml(r.sku || '-')}</span></div>
     <div class="modal-row"><span>Status</span><span>${escHtml(r.status)}</span></div>
@@ -223,23 +308,278 @@ function formatDate(iso) {
 }
 
 // ============================================================
-// PRODUCT FINDER — browse products synced from Shein collections,
+// BROWSE SHEIN — clickable category sidebar (from the synced Shein
+// menu) that loads products for whichever category is clicked,
+// asking the extension (via the browse queue) to fetch them if
+// they aren't already cached.
+// ============================================================
+let browseMenuData = [];
+let browseCategoryUrl = '';
+let browseCategoryTitle = '';
+let browsePage = 1;
+let browseTotalPages = 1;
+let browseSelectedIds = new Set();
+let browsePollTimer = null;
+
+async function loadBrowseMenu() {
+  const menuEl = document.getElementById('browseMenu');
+  try {
+    const res = await api('/api/menu');
+    const { data } = await res.json();
+    browseMenuData = data || [];
+
+    if (browseMenuData.length === 0) {
+      menuEl.innerHTML = '<div class="empty-row" style="padding:16px 6px">Abhi koi menu sync nahi hua. Extension se "Sync Shein Menu" dabayen.</div>';
+      return;
+    }
+
+    // Group items by their parentName. Items with NO parentName are real
+    // top-level links and render as flat buttons; everything else renders
+    // under a section label showing its parentName (Shein's top-level
+    // category buttons are often hover-triggers, not real <a> links, so
+    // most/all items usually end up in a named group rather than "flat").
+    const groups = new Map(); // parentName (or null) -> items[]
+    browseMenuData.forEach(item => {
+      const key = item.parentName || null;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    });
+
+    let html = '';
+    (groups.get(null) || []).forEach(item => {
+      html += `<button class="browse-menu-item" data-url="${escAttr(item.url)}" data-title="${escAttr(item.name)}">${escHtml(item.name)}</button>`;
+    });
+    groups.forEach((groupItems, key) => {
+      if (key === null) return;
+      html += `<div class="browse-menu-group-label">${escHtml(key)}</div>`;
+      html += '<div class="browse-submenu">';
+      groupItems.forEach(item => {
+        html += `<button class="browse-menu-item" data-url="${escAttr(item.url)}" data-title="${escAttr(item.name)}">${escHtml(item.name)}</button>`;
+      });
+      html += '</div>';
+    });
+    menuEl.innerHTML = html;
+
+    menuEl.querySelectorAll('.browse-menu-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        menuEl.querySelectorAll('.browse-menu-item').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        openBrowseCategory(btn.dataset.url, btn.dataset.title);
+      });
+    });
+  } catch (e) {
+    menuEl.innerHTML = '<div class="empty-row" style="padding:16px 6px">Menu load nahi ho saka.</div>';
+  }
+}
+
+async function openBrowseCategory(url, title) {
+  browseCategoryUrl = url;
+  browseCategoryTitle = title;
+  browsePage = 1;
+  browseSelectedIds.clear();
+  updateBrowseSelectedCount();
+
+  const grid = document.getElementById('browseGrid');
+  grid.innerHTML = `<div class="empty-row">"${escHtml(title)}" ke products fetch ho rahe hain… (pehli baar ho to ~1 minute lag sakta hai)</div>`;
+  document.getElementById('browsePageLabel').textContent = '';
+
+  if (browsePollTimer) clearInterval(browsePollTimer);
+
+  // Ask the server to queue this URL for the extension to scrape (no-op if
+  // it was already synced recently — server handles that check).
+  try { await api('/api/browse', { method: 'POST', body: JSON.stringify({ url, title }) }); } catch (e) {}
+
+  let attempts = 0;
+  const maxAttempts = 24; // ~72s at 3s interval
+  const poll = async () => {
+    attempts++;
+    const got = await loadBrowseGrid(true);
+    if (got || attempts >= maxAttempts) {
+      clearInterval(browsePollTimer);
+      if (!got) {
+        grid.innerHTML = `<div class="empty-row">Abhi tak products nahi aaye. Extension browser mein open hai aur server settings sahi hain, ye confirm kar lein, phir dobara category click karein.</div>`;
+      }
+    }
+  };
+  poll();
+  browsePollTimer = setInterval(poll, 3000);
+}
+
+// Returns true if at least one product was found/rendered
+async function loadBrowseGrid(silent) {
+  if (!browseCategoryUrl) return false;
+  const grid = document.getElementById('browseGrid');
+
+  const params = new URLSearchParams({
+    page: browsePage, limit: 60, status: 'all', collectionUrl: browseCategoryUrl
+  });
+  const minPrice = document.getElementById('browseMinPrice').value.trim();
+  const maxPrice = document.getElementById('browseMaxPrice').value.trim();
+  const tag = document.getElementById('browseTagFilter').value;
+  if (minPrice) params.set('minPrice', minPrice);
+  if (maxPrice) params.set('maxPrice', maxPrice);
+  if (tag && tag !== 'all') params.set('tag', tag);
+
+  try {
+    const res = await api('/api/catalog?' + params.toString());
+    const json = await res.json();
+    browseTotalPages = json.totalPages || 1;
+
+    if (json.data.length === 0) {
+      if (!silent) grid.innerHTML = '<div class="empty-row">Is filter se koi product nahi mila.</div>';
+      return false;
+    }
+
+    renderBrowseGrid(json.data);
+    document.getElementById('browsePageLabel').textContent = `Page ${json.page} of ${json.totalPages} (${json.total} total)`;
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+const TAG_CLASS = { 'New': 'tag-new', 'Trending': 'tag-trending', 'Hot': 'tag-hot', 'Flash Sale': 'tag-flash-sale' };
+
+function renderBrowseGrid(rows) {
+  const grid = document.getElementById('browseGrid');
+  grid.innerHTML = rows.map(r => {
+    const isSelectable = r.status === 'available' || r.status === 'error';
+    const checked = browseSelectedIds.has(r.id) ? 'checked' : '';
+    const statusLabel = STATUS_LABELS[r.status] || '';
+    const badgeClass = STATUS_BADGE_CLASS[r.status] || '';
+    return `
+      <div class="finder-card ${browseSelectedIds.has(r.id) ? 'selected' : ''}" data-id="${r.id}">
+        ${isSelectable ? `<input type="checkbox" class="finder-card-checkbox" ${checked} onclick="event.stopPropagation(); toggleBrowseSelect('${r.id}')" />` : ''}
+        ${statusLabel ? `<span class="finder-card-status badge ${badgeClass}">${statusLabel}</span>` : ''}
+        <img class="finder-card-img" src="${escAttr(r.image || '')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.visibility='hidden'" />
+        <div class="finder-card-body">
+          <div class="finder-card-title">${escHtml(truncate(r.title || 'Untitled', 60))}</div>
+          ${r.tag ? `<span class="tag-badge ${TAG_CLASS[r.tag] || ''}">${escHtml(r.tag)}</span>` : ''}
+          <div class="finder-card-meta">
+            <span class="finder-card-price">${r.price ? '$' + escHtml(r.price) : ''}</span>
+            <span class="sku-cell">${escHtml(r.sku || '')}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('.finder-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const cb = card.querySelector('.finder-card-checkbox');
+      if (cb) toggleBrowseSelect(card.dataset.id);
+    });
+  });
+}
+
+function toggleBrowseSelect(id) {
+  if (browseSelectedIds.has(id)) browseSelectedIds.delete(id);
+  else browseSelectedIds.add(id);
+  const card = document.querySelector(`#browseGrid .finder-card[data-id="${id}"]`);
+  if (card) {
+    card.classList.toggle('selected', browseSelectedIds.has(id));
+    const cb = card.querySelector('.finder-card-checkbox');
+    if (cb) cb.checked = browseSelectedIds.has(id);
+  }
+  updateBrowseSelectedCount();
+}
+
+function updateBrowseSelectedCount() {
+  document.getElementById('browseSelectedCount').textContent = browseSelectedIds.size;
+  document.getElementById('browseImportSelectedBtn').disabled = browseSelectedIds.size === 0;
+}
+
+document.getElementById('browseApplyFiltersBtn').addEventListener('click', () => {
+  browsePage = 1;
+  loadBrowseGrid();
+});
+
+document.getElementById('browseSelectAllBtn').addEventListener('click', () => {
+  document.querySelectorAll('#browseGrid .finder-card-checkbox').forEach(cb => {
+    const card = cb.closest('.finder-card');
+    browseSelectedIds.add(card.dataset.id);
+    cb.checked = true;
+    card.classList.add('selected');
+  });
+  updateBrowseSelectedCount();
+});
+
+document.getElementById('browseImportSelectedBtn').addEventListener('click', async () => {
+  if (browseSelectedIds.size === 0) return;
+  const btn = document.getElementById('browseImportSelectedBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Queuing...';
+  try {
+    await api('/api/catalog/queue', { method: 'POST', body: JSON.stringify({ ids: [...browseSelectedIds] }) });
+    browseSelectedIds.clear();
+    loadBrowseGrid();
+  } finally {
+    btn.innerHTML = '⬆ Import Selected (<span id="browseSelectedCount">0</span>)';
+  }
+});
+
+document.getElementById('browsePrevBtn').addEventListener('click', () => {
+  if (browsePage > 1) { browsePage--; loadBrowseGrid(); }
+});
+document.getElementById('browseNextBtn').addEventListener('click', () => {
+  if (browsePage < browseTotalPages) { browsePage++; loadBrowseGrid(); }
+});
 // select some, and queue them for the extension to auto-import.
 // ============================================================
 let finderPage = 1;
 let finderTotalPages = 1;
 let finderSearch = '';
 let finderStatus = 'available';
+let finderCollectionUrl = ''; // '' = all collections
 let selectedIds = new Set();
 let finderPollInterval = null;
+const FINDER_PAGE_SIZE = 100;
 
-async function loadFinder() {
+async function loadCollectionsDropdown(preselectLatest) {
+  const select = document.getElementById('finderCollectionFilter');
+  try {
+    const res = await api('/api/catalog/collections');
+    const { data: collections } = await res.json();
+
+    const options = ['<option value="">All Collections</option>'];
+    collections.forEach((c, i) => {
+      const label = (c.title || c.url || 'Untitled').slice(0, 45);
+      options.push(`<option value="${escAttr(c.url || '')}">${i === 0 ? '🆕 ' : ''}${escHtml(label)}</option>`);
+    });
+    select.innerHTML = options.join('');
+
+    // On first load, default to the MOST RECENTLY synced collection so old
+    // syncs don't clutter the view — user can pick "All Collections" manually.
+    if (preselectLatest && collections.length > 0) {
+      finderCollectionUrl = collections[0].url || '';
+      select.value = finderCollectionUrl;
+    } else {
+      select.value = finderCollectionUrl;
+    }
+  } catch (e) {
+    select.innerHTML = '<option value="">All Collections</option>';
+  }
+}
+
+document.getElementById('finderCollectionFilter').addEventListener('change', (e) => {
+  finderCollectionUrl = e.target.value;
+  finderPage = 1;
+  selectedIds.clear();
+  loadFinder();
+});
+
+async function loadFinder(isFirstLoad) {
   const grid = document.getElementById('finderGrid');
   grid.innerHTML = '<div class="empty-row">Loading…</div>';
 
+  if (isFirstLoad) {
+    await loadCollectionsDropdown(true); // auto-select latest sync on first open
+  }
+
   const params = new URLSearchParams({
-    page: finderPage, limit: 24, search: finderSearch, status: finderStatus
+    page: finderPage, limit: FINDER_PAGE_SIZE, search: finderSearch, status: finderStatus
   });
+  if (finderCollectionUrl) params.set('collectionUrl', finderCollectionUrl);
 
   try {
     const res = await api('/api/catalog?' + params.toString());
@@ -284,7 +624,7 @@ function renderFinder(rows) {
       <div class="finder-card ${selectedIds.has(r.id) ? 'selected' : ''}" data-id="${r.id}">
         ${isSelectable ? `<input type="checkbox" class="finder-card-checkbox" ${checked} onclick="event.stopPropagation(); toggleSelect('${r.id}')" />` : ''}
         ${statusLabel ? `<span class="finder-card-status badge ${badgeClass}">${statusLabel}</span>` : ''}
-        <img class="finder-card-img" src="${escAttr(r.image || '')}" onerror="this.style.visibility='hidden'" />
+        <img class="finder-card-img" src="${escAttr(r.image || '')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.visibility='hidden'" />
         <div class="finder-card-body">
           <div class="finder-card-title">${escHtml(truncate(r.title || 'Untitled', 60))}</div>
           <div class="finder-card-meta">
