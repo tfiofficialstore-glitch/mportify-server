@@ -26,6 +26,7 @@
     <nav class="menu">
       <div class="menu-label">MENU</div>
       <button class="menu-item" data-page="statsPage">📊 Dashboard</button>
+      <button class="menu-item" data-page="browsePage">🧭 Browse Shein</button>
       <button class="menu-item active" data-page="finderPage">🔎 Product Finder</button>
       <button class="menu-item" data-page="listPage">🗂 Import List</button>
     </nav>
@@ -33,6 +34,50 @@
   </aside>
 
   <main class="main">
+    <!-- BROWSE SHEIN PAGE -->
+    <section id="browsePage" class="page">
+      <div class="page-header">
+        <h1>Browse Shein</h1>
+      </div>
+      <div class="finder-hint">
+        Extension mein <strong>"📋 Sync Shein Menu"</strong> ek dafa dabayen (kisi bhi Shein page se) taake categories yahan aa jayen.
+        Phir bayen taraf se koi category click karein — uske products yahan load ho jayenge (agar pehli baar hai to ~1 minute lag sakta hai).
+      </div>
+
+      <div class="browse-layout">
+        <aside class="browse-menu" id="browseMenu">
+          <div class="empty-row">Menu load ho raha hai…</div>
+        </aside>
+
+        <div class="browse-content">
+          <div class="toolbar">
+            <input id="browseMinPrice" type="number" placeholder="Min price" class="filter-select" style="width:100px" />
+            <input id="browseMaxPrice" type="number" placeholder="Max price" class="filter-select" style="width:100px" />
+            <select id="browseTagFilter" class="filter-select">
+              <option value="all">All Tags</option>
+              <option value="New">🆕 New</option>
+              <option value="Trending">🔥 Trending</option>
+              <option value="Flash Sale">⚡ Flash Sale</option>
+              <option value="Hot">♨️ Hot</option>
+            </select>
+            <button id="browseApplyFiltersBtn" class="btn btn-outline">Apply</button>
+            <button id="browseSelectAllBtn" class="btn btn-outline">☑ Select All</button>
+            <button id="browseImportSelectedBtn" class="btn btn-primary" disabled>⬆ Import Selected (<span id="browseSelectedCount">0</span>)</button>
+          </div>
+
+          <div class="finder-grid" id="browseGrid">
+            <div class="empty-row">Bayen taraf se ek category select karein.</div>
+          </div>
+
+          <div class="pagination">
+            <button id="browsePrevBtn" class="btn btn-outline">← Prev</button>
+            <span id="browsePageLabel"></span>
+            <button id="browseNextBtn" class="btn btn-outline">Next →</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- PRODUCT FINDER PAGE -->
     <section id="finderPage" class="page active">
       <div class="page-header">
@@ -45,6 +90,9 @@
 
       <div class="toolbar">
         <input id="finderSearchInput" type="text" placeholder="Search products or SKU..." class="search-input" />
+        <select id="finderCollectionFilter" class="filter-select">
+          <option value="">Loading collections…</option>
+        </select>
         <select id="finderStatusFilter" class="filter-select">
           <option value="available">Available</option>
           <option value="queued">Queued</option>
@@ -78,6 +126,22 @@
         <div class="stat-card"><div class="stat-value" id="statToday">-</div><div class="stat-label">Today</div></div>
         <div class="stat-card"><div class="stat-value" id="statWeek">-</div><div class="stat-label">Last 7 Days</div></div>
       </div>
+
+      <div class="special-section">
+        <div class="special-section-header">
+          <span class="special-title">🔥 Super Deals</span>
+          <button class="btn btn-outline" onclick="goToBrowseFor(SUPER_DEALS_URL, 'Super Deals')">View All →</button>
+        </div>
+        <div class="special-row" id="superDealsRow"><div class="empty-row">Loading…</div></div>
+      </div>
+
+      <div class="special-section">
+        <div class="special-section-header">
+          <span class="special-title">📈 Trends</span>
+          <button class="btn btn-outline" onclick="goToBrowseFor(TRENDS_URL, 'Trends')">View All →</button>
+        </div>
+        <div class="special-row" id="trendsRow"><div class="empty-row">Loading…</div></div>
+      </div>
     </section>
 
     <!-- LIST PAGE -->
@@ -105,12 +169,13 @@
               <th>Name</th>
               <th>Website</th>
               <th>Status</th>
+              <th>Stock</th>
               <th>Date</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="tableBody">
-            <tr><td colspan="7" class="empty-row">Loading…</td></tr>
+            <tr><td colspan="8" class="empty-row">Loading…</td></tr>
           </tbody>
         </table>
       </div>
